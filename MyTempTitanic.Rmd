@@ -1,0 +1,371 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Cargar librerias
+```{r, warning=FALSE, message=FALSE}
+  
+  library(dplyr)
+  library(readr)
+  library(ggplot2)
+  library(scales)
+  library(mice)
+  library(ggthemes)
+  library(plotly)
+  library(stringr)
+  library(stringi)
+  library(rJava)
+  library(car)
+  library(plotrix)
+  library(rpart)
+  library(randomForest)
+  library(bagRboostR)
+  library(C50)
+  library(tree)
+  library(rpart.plot)
+  library(gbm)
+  library(glm.predict)
+  library(caret)
+  library(xgboost)
+  library(e1071)
+  library(ROCR)
+
+```
+
+# Configurar directorio de trabajo y cargar datos
+```{r, warning=FALSE, message=FALSE}
+  
+  #setwd("C:/Users/eriano01/Downloads/Titanic")
+  #setwd("C:/Users/CASA/Downloads/Titanic")
+  setwd("C:/Users/eduar/Downloads/Titanic")
+  train <- read_csv("train.csv")
+  test <- read_csv("test.csv")
+    
+```
+
+```{r, warning=FALSE, message=FALSE}
+  str(train)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+  glimpse(train)
+
+```
+# Quitar el Passenger ID
+```{r}
+  train <- train[,-1]
+  test <- test[,-1]
+  
+
+```
+#Convertir el tipo de dato Survived
+```{r}
+  train$Survived <- if_else(train$Survived == 1, "Yes" , "No")
+  train$Survived <- as.factor(train$Survived)
+
+```
+#Grafica de probabilidad Normal
+```{r}
+  qqnorm(train$Age)
+  mean(train$Age, na.rm = TRUE)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+  
+  train$Sex <- as.factor(train$Sex)
+  train$Embarked <- as.factor(train$Embarked)
+  train$Survived <- as.factor (train$Survived)
+  train$Pclass <- as.factor (train$Pclass)
+
+  
+  test$Sex <- as.factor(test$Sex)
+  test$Embarked <- as.factor(test$Embarked)
+  test$Pclass <- as.factor(test$Pclass)
+  
+```
+
+```{r, warning=FALSE, message=FALSE}
+  summary (train)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+  summary (test)
+
+```
+# Datos NA-Train
+```{r}
+
+  naTrain <- sapply (train, function (x)sum(is.na(x)))
+  naTrain <- tibble(variable = names(naTrain), cantidad =naTrain)
+  
+  naTrain %>% ggplot(aes(x = reorder(variable,cantidad), y = cantidad)) +
+              geom_bar(stat = "identity", position = "dodge") + 
+              coord_flip() +
+              labs (title="Cantidad de datos faltantes por variable") 
+    
+```
+# Datos NA-Test
+```{r}
+
+  naTest<- sapply (test, function (x)sum(is.na(x)))
+  naTest <- tibble(variable = names(naTest), cantidad =naTest)
+  
+  naTest %>% ggplot(aes(x = variable, y = cantidad)) +
+             geom_bar(stat = "identity") + 
+             coord_flip() +
+             labs (title="Cantidad de datos faltantes por variable") 
+    
+```
+# Imputacion de datos faltantes N/A TRAIN
+```{r}
+  impTrain <- mice(train)
+  train <- complete(impTrain)
+
+```
+# Imputacion de datos faltantes N/A TEST
+```{r}
+  impTest <- mice(test)
+  test <- complete(impTest)
+
+```
+# Variable Age group
+```{r}
+  train <- train %>%
+  mutate(`Age Group` = case_when(Age < 13 ~  "Ni?o" , 
+                               Age >= 13 & Age < 21 ~ "Adolescente" ,
+                               Age >= 21 & Age < 60 ~ "Adulto" , 
+                               Age >= 60  ~ "Tercera Edad") )
+
+  test <- test %>%
+  mutate(`Age Group` = case_when(Age < 13 ~  "Ni?o" , 
+                               Age >= 13 & Age < 21 ~ "Adolescente" ,
+                               Age >= 21 & Age < 60 ~ "Adulto" , 
+                               Age >= 60  ~ "Tercera Edad") )
+```
+# Variable Title
+```{r}
+  test <-test %>%
+         mutate(Title = as.factor(str_sub(Name , str_locate(Name,",")[, 1]+2,           str_locate(Name, "\\.")[, 1]-1)))
+```
+# Variable Title
+```{r}
+  train <- train %>%
+           mutate(Title = as.factor(str_sub(Name , str_locate(Name,",")[, 1]+2,            str_locate(Name, "\\.")[, 1]-1)))
+```
+
+# Categorizacion de clase  
+```{r}
+  train <- train %>% 
+           mutate(Class = case_when( Pclass==1 ~ "Burguesa",
+                                   Pclass==2 ~ "Media" ,
+                                   Pclass==3 ~ "Obrera"))
+```
+# Categorizacion de clase  
+```{r}
+  test <- test %>% 
+          mutate(Class = case_when( Pclass==1 ~ "Burguesa",
+                                   Pclass==2 ~ "Media" ,
+                                   Pclass==3 ~ "Obrera"))
+```
+
+```{r}
+  summary(train$Fare)
+
+```
+# Filtro para obtener minimos y maximos de tarifas por clase (Primera variable nueva)
+```{r}
+
+  train <- train %>%
+           mutate(`Tipo Tarifa` = case_when( Fare< 15 ~  "Baja" , 
+                                           Fare>= 15 & Fare< 60 ~ "Mediana" ,
+                                           Fare >= 60 ~ "Alta"))
+
+
+  test <- test%>%
+          mutate(`Tipo Tarifa` = case_when( Fare< 15 ~  "Baja" , 
+                                           Fare>= 15 & Fare< 60 ~ "Mediana" ,
+                                           Fare >= 60 ~ "Alta"))
+                                        
+```
+# Cambio de nombre de puerto de embarque
+```{r}
+test$Embarked<- if_else(test$Embarked ==         "C","Cherbourg",if_else(test$Embarked == "Q"," Queenstown","Southampton"))
+
+  train$Embarked<- if_else(train$Embarked == "C","Cherbourg",if_else(train$Embarked== "Q"," Queenstown","Southampton"))
+
+```
+# Totalizacion de familiares (Segunda variable nueva)
+```{r}
+  train$Family_Size = rowSums(train[,6:7]) 
+  test$Family_Size = rowSums(test[,5:6]) 
+                
+```
+# Clasificacion de la variable "Family Size" (Tercera variable nueva)
+```{r}
+  train <- train %>%
+           mutate(`Is Alone` = case_when( Family_Size == 0 ~  "Yes", 
+                                        Family_Size >= 1 ~  "No"))
+
+  test <- test %>%
+          mutate(`Is Alone` = case_when( Family_Size == 0 ~  "Yes", 
+                                       Family_Size >= 1 ~  "No"))
+
+```
+```{r}
+train <- train %>%
+           mutate(Fam_size_2 = case_when( Family_Size < 3 ~  "Small", 
+                                          Family_Size <=6 ~  "Medium",
+                                          Family_Size > 6 ~  "Big"))
+
+test <- test %>%
+           mutate(Fam_size_2 = case_when( Family_Size < 3 ~  "Small", 
+                                          Family_Size <=6 ~  "Medium",
+                                          Family_Size > 6 ~  "Big"))
+```
+
+
+# Histogramas para cada variable
+```{r}
+  hist(train$Age)
+  hist(train$Fare)
+
+```
+# Grafica de densidad
+```{r}
+  plot(density(train$Age))
+  plot(density(train$Fare))
+
+```
+# Graficas cualitativas (Diagrama de barras)(Porcentaje y variables solas)
+```{r}
+  barplot(prop.table(table(train$Survived)),col = c("green","blue"),legend.text = c("No","Yes"), xlim = c(0,3.5), ylim = c(0,1))
+  barplot(prop.table(table(train$Sex)),col = c("orange","red"),legend.text = c("Female","Male"), xlim = c(0,3.5), ylim = c(0,1))
+  barplot(prop.table(table(train$Embarked)),col = c("black","white","gray"),legend.text = c("Queenstown","Cherbourg","Southampton"), xlim = c(0,6), ylim = c(0,1))
+
+```
+# Pie Chart from data frame with Appended Sample Sizes
+```{r}
+  mytable <- table(train$Pclass)
+  lbls <- paste(names(mytable),"\n", mytable, sep = "")
+  pie(mytable,labels = lbls, main = "Pie chart of Pclass")
+
+```
+# Pie Chart from data frame with Appended Sample Sizes
+```{r}
+  mytable2 <- table(train$Survived)
+  lbls2 <- paste(names(mytable2),"\n", mytable2, sep = "")
+  pie(mytable2,labels = lbls2, main = "Pie chart of Survived")
+
+```
+# Box-Plot
+```{r}
+  boxplot(train$Fare, ylim= c(0,500))
+  summary(train$Fare)
+
+```
+# Grafica 1
+```{r}
+  ggplot(data= train) + geom_bar(mapping = aes(x= Pclass), fill=    c("blue","black","mediumorchid1"))+ coord_flip() 
+
+```
+# Grafica 2
+```{r}
+  ggplot(data= train) + geom_bar(mapping = aes(x= Sex), fill= c("pink","gold")) + coord_flip() # + coord_polar() 
+
+```
+# Grafica 3 
+```{r}
+  ggplot(data= train, mapping = aes(x= Pclass , y= Fare, size = Pclass, color = Pclass, shape = Pclass, alpha = Pclass)) + geom_point() +  facet_wrap(~ Pclass, ncol =3)
+
+```
+# Grafica de sobrevivientes por tama?o de familia
+```{r}
+f <- train %>%
+     ggplot(aes(x= train$Fam_size_2, fill= Survived)) + geom_bar(position ="fill")+ labs(title = 'Survived by Family Size', x = 'Size' , y= 'Percent')
+f
+f <- ggplotly(f, width = NULL, height = NULL)
+
+```
+# Grafica de sobrevivientes por puerto de embarque
+```{r}
+p_e <- train %>%
+     ggplot(aes(x= Embarked , fill= Survived)) + geom_bar(position ="fill")+ labs(title = 'Survived by Embarked', x = 'Embarked' , y= 'Percent')
+p_e
+
+```
+# Diagrama agrupado
+```{r}
+  ggplot(data= train) + geom_bar(mapping = aes(x= train$Sex , fill=train$Survived))
+
+```
+#Partici?n de datos del Train en un 80-20
+```{r}
+index <- createDataPartition(train$Survived , times = 1, list = FALSE , p = 0.8)
+train1 <- train[index,]
+train2 <- train[-index,]
+```
+#Vector de variables predictoras
+```{r}
+Var_predict <- c("Pclass", "Sex","Embarked","Age Group","Fare","Family_Size","Is Alone")
+```
+#Preparacion del modelo
+```{r}
+modelo_ent <- preProcess(x = train1 , method = c("center", "scale","knnImpute"), k = 8)
+```
+
+# Regresi?n Logistica
+```{r}
+  modelo_1 <- glm(Survived ~ Pclass + Sex + Fare + `Age Group` + Embarked, data = train1 , family = "binomial")
+
+predLogModel_1 <- predict(modelo_1, newdata = train1, type = 'response')
+predLogModel_1
+
+train1 = train1 %>% mutate(Var_Pred = ifelse(predLogModel_1 >= 0.6, 1 , 0))
+
+```
+# Prueba del modelo Logistico en Train2
+```{r}
+fitted.results <- predict(modelo_1,newdata=subset(train2,select= Var_predict,type='response'))
+train2$fitted.results <- ifelse(fitted.results >= 0.6,1,0)
+train2$fitted.results <- as.factor(train2$fitted.results)
+```
+
+# Matriz de Confusion para Train2
+```{r}
+train2$Survived <- ifelse(train2$Survived == "Yes", 1,0 )
+train2$Survived <- as.factor(train2$Survived)
+
+confusionMatrix(data = train2$fitted.results, reference = train2$Survived)
+
+```
+# Ejecucion del molelo para Test 
+```{r}
+Survived <- predict(modelo_1,newdata=subset(test,select= Var_predict,type='response'))
+Survived  <- ifelse(Survived >= 0.5,1,0)
+Survived  <- as.factor(Survived)
+Resultado_Final <- data.frame(PassengerId = c(892:1309) ,Survived )
+
+```
+#Submission 1
+```{r}
+write.csv(Resultado_Final,file = 'Submission1.csv',row.names = FALSE)
+```
+
+# Curva ROC
+```{r}
+
+P <- predict(modelo_1,newdata=subset(train2,select= Var_predict,type='response'))
+pr <- prediction(P, train2$Survived)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+
